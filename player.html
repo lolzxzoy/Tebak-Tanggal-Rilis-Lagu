@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tebak Tanggal Rilis - Pemain</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Firebase Compat SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+</head>
+<body class="bg-indigo-950 text-white min-h-screen flex items-center justify-center p-4">
+
+  <div class="w-full max-w-md bg-slate-900/90 border border-white/10 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+    
+    <!-- STATE 1: JOIN NAME -->
+    <div id="screen-join" class="space-y-5 text-center">
+      <h1 class="text-2xl font-black text-pink-400 font-poppins">Tebak Tanggal Rilis</h1>
+      <p class="text-xs text-gray-300">Masukkan nama kamu untuk bergabung ke room live!</p>
+      
+      <input type="text" id="player-name" placeholder="Nama / Nickname" class="w-full px-4 py-3 bg-white/10 border border-white/20 rounded-2xl text-center font-bold text-white placeholder-gray-400 focus:outline-none focus:border-pink-400">
+      
+      <button onclick="joinRoom()" class="w-full py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 font-extrabold rounded-2xl text-sm shadow-lg hover:scale-105 transition">
+        Masuk Room Game
+      </button>
+    </div>
+
+    <!-- STATE 2: WAITING FOR HOST -->
+    <div id="screen-waiting" class="space-y-4 text-center hidden py-8">
+      <div class="w-16 h-16 border-4 border-pink-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+      <h2 class="text-xl font-bold text-white">Menunggu Host...</h2>
+      <p id="waiting-desc" class="text-xs text-gray-400">Game akan dimulai ketika Host merilis soal.</p>
+    </div>
+
+    <!-- STATE 3: ANSWER QUESTION -->
+    <div id="screen-question" class="space-y-5 hidden">
+      <div class="flex justify-between items-center text-xs text-gray-400 border-b border-white/10 pb-3">
+        <span id="song-album" class="text-pink-400 font-bold uppercase">Single</span>
+        <span id="player-score-tag" class="font-bold text-amber-400">0 Poin</span>
+      </div>
+
+      <div class="text-center space-y-1">
+        <h2 id="song-title" class="text-2xl font-extrabold text-white">"Judul Lagu"</h2>
+        <p class="text-xs text-gray-300">Kapan lagu ini resmi dirilis?</p>
+      </div>
+
+      <div id="options-container" class="grid grid-cols-1 gap-3 pt-2"></div>
+    </div>
+
+    <!-- STATE 4: ANSWER SUBMITTED -->
+    <div id="screen-submitted" class="space-y-3 text-center hidden py-8">
+      <i class="fa-solid fa-circle-check text-5xl text-emerald-400"></i>
+      <h2 class="text-xl font-bold text-white">Jawaban Terkirim!</h2>
+      <p class="text-xs text-gray-400">Kecepatan jawaban kamu dicatat. Tunggu Host menampilkan Leaderboard!</p>
+    </div>
+
+    <!-- STATE 5: LEADERBOARD SCREEN -->
+    <div id="screen-leaderboard" class="space-y-4 text-center hidden">
+      <h2 class="text-xl font-bold text-amber-400"><i class="fa-solid fa-trophy mr-1"></i> Leaderboard Saat Ini</h2>
+      <div id="player-lb-list" class="space-y-2 text-left"></div>
+    </div>
+
+  </div>
+
+  <script>
+    // ⚠️ GANTI DENGAN FIREBASE CONFIG KAMU ⚠️
+    const firebaseConfig = {
+      apiKey: "AIzaSyBfAYYY1vcgNrRoR9GaHuJQgscXSzKRnvw",
+      authDomain: "tebak-judul-lagu-anneth-76dbd.firebaseapp.com",
+      databaseURL: "https://tebak-judul-lagu-anneth-76dbd-default-rtdb.firebaseio.com",
+      projectId: "tebak-judul-lagu-anneth-76dbd",
+      storageBucket: "tebak-judul-lagu-anneth-76dbd.firebasestorage.app",
+      messagingSenderId: "630191409248",
+      appId: "1:630191409248:web:f264a67d783c3a7de61b05"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+
+    const quizData = [
+      {
+        title: "Tetap Untukmu",
+        album: "Single Perdana",
+        correct: "28 Agustus 2019",
+        options: ["28 Agustus 2019", "15 Juli 2019", "18 Oktober 2019", "12 Desember 2019"],
+        trivia: "Debut single solo perdana Anneth usai menjuarai Indonesian Idol Junior musim ketiga!"
+      },
+      {
+        title: "Mungkin Hari Ini Esok Atau Nanti",
+        album: "And The Story Begins",
+        correct: "18 Oktober 2020",
+        options: ["18 Oktober 2020", "28 Agustus 2020", "15 November 2020", "01 Januari 2021"],
+        trivia: "Dirilis tepat saat ulang tahun Anneth ke-15! Ditulis sendiri oleh Anneth dan memborong piala AMI Awards."
+      },
+      {
+        title: "Should I (feat. Zara Leola)",
+        album: "Single Duet",
+        correct: "11 Desember 2020",
+        options: ["11 Desember 2020", "18 Oktober 2020", "14 Februari 2021", "20 November 2020"],
+        trivia: "Lagu kolaborasi manis antara Anneth dan Zara Leola tentang keraguan perasaan remaja."
+      },
+      {
+        title: "Bakti",
+        album: "OST. Kadet 1947",
+        correct: "09 November 2021",
+        options: ["09 November 2021", "17 Agustus 2021", "10 November 2021", "25 Desember 2021"],
+        trivia: "Lagu emosional ciptaan Melly Goeslaw yang dibawakan Anneth untuk OST film Kadet 1947."
+      },
+      {
+        title: "Takkan Berhenti Mencintaimu",
+        album: "And The Story Begins",
+        correct: "08 Desember 2021",
+        options: ["08 Desember 2021", "18 Oktober 2021", "14 Februari 2022", "01 November 2021"],
+        trivia: "Single romantis menyentuh dari album solo perdana 'And The Story Begins'."
+      },
+      {
+        title: "Warna Favorit",
+        album: "And The Story Begins",
+        correct: "22 April 2022",
+        options: ["22 April 2022", "18 Oktober 2022", "14 Februari 2022", "01 Juni 2022"],
+        trivia: "Lagu ceria yang dipilih Anneth sebagai lagu utama peluncuran album perdananya!"
+      },
+      {
+        title: "Sampai Kapan (Jaga Hati Untukmu)",
+        album: "Single Release",
+        correct: "18 Juli 2022",
+        options: ["18 Juli 2022", "18 Oktober 2022", "01 Juni 2022", "20 Agustus 2022"],
+        trivia: "MV lagu ini rilis di channel YouTube RANS Music dan sempat menduduki jajaran trending!"
+      },
+      {
+        title: "Masih Belum Lupa (feat. Ade Govinda)",
+        album: "Single Duet",
+        correct: "23 September 2022",
+        options: ["23 September 2022", "18 Oktober 2022", "10 Agustus 2022", "12 November 2022"],
+        trivia: "Kolaborasi emosional ciptaan Ade Govinda yang dibawakan begitu dalam oleh Anneth."
+      },
+      {
+        title: "MEMAR (Meski Masih Ada Rasa)",
+        album: "Single Release",
+        correct: "18 Oktober 2023",
+        options: ["18 Oktober 2023", "28 Agustus 2023", "18 November 2023", "12 Oktober 2023"],
+        trivia: "Rilis spesial tepat di ulang tahun Anneth ke-18, pada tanggal 18 Oktober jam 18.18 WIB!"
+      },
+      {
+        title: "Pandai Bicara",
+        album: "Single Release",
+        correct: "22 Februari 2024",
+        options: ["22 Februari 2024", "18 Oktober 2023", "14 Maret 2024", "10 Januari 2024"],
+        trivia: "Single hits Anneth di awal tahun 2024 dengan lirik puitis tentang dinamika hubungan."
+      },
+      {
+        title: "Sampai Bertemu Lagi",
+        album: "Single Release",
+        correct: "10 Oktober 2024",
+        options: ["10 Oktober 2024", "18 Oktober 2024", "22 Agustus 2024", "01 November 2024"],
+        trivia: "Lagu perpisahan manis nan emosional persembahan indah dari Anneth untuk para fans."
+      },
+      {
+        title: "Jatuh Sejatuh-Jatuhnya",
+        album: "Single Release",
+        correct: "23 Mei 2025",
+        options: ["23 Mei 2025", "18 Oktober 2024", "15 April 2025", "10 Juni 2025"],
+        trivia: "Single bernuansa medium up-beat Anneth tentang rasa cinta dan ketulusan mendalam."
+      }
+    ];
+
+    let playerId = "", playerName = "", myScore = 0, currentQ = 0, qStartTime = 0, answered = false;
+
+    function joinRoom() {
+      const input = document.getElementById('player-name');
+      if (!input.value.trim()) return alert("Isi nama kamu dulu!");
+      
+      playerName = input.value.trim();
+      playerId = 'player_' + Math.random().toString(36).substr(2, 9);
+
+      // Register ke Firebase Realtime Database
+      db.ref(`room/players/${playerId}`).set({
+        id: playerId,
+        name: playerName,
+        score: 0
+      });
+
+      listenRoomStatus();
+    }
+
+    function listenRoomStatus() {
+      showScreen('screen-waiting');
+
+      db.ref('room').on('value', snapshot => {
+        const data = snapshot.val();
+        if (!data) return;
+
+        currentQ = data.currentQ || 0;
+        qStartTime = data.questionStartTime || Date.now();
+
+        if (data.state === 'QUESTION') {
+          if (!answered) renderQuestionScreen();
+        } else if (data.state === 'LEADERBOARD') {
+          renderLeaderboardScreen(data.players);
+        } else if (data.state === 'WAITING_NEXT' || data.state === 'WAITING') {
+          answered = false;
+          showScreen('screen-waiting');
+        }
+      });
+    }
+
+    function renderQuestionScreen() {
+      showScreen('screen-question');
+      const q = quizData[currentQ];
+
+      document.getElementById('song-album').innerText = q.album;
+      document.getElementById('song-title').innerText = `"${q.title}"`;
+      document.getElementById('player-score-tag').innerText = `${myScore} Poin`;
+
+      const container = document.getElementById('options-container');
+      container.innerHTML = '';
+
+      // Acak pilihan jawaban untuk tiap pemain
+      const shuffled = [...q.options].sort(() => Math.random() - 0.5);
+
+      shuffled.forEach(opt => {
+        const btn = document.createElement('button');
+        btn.className = 'w-full py-3.5 px-4 bg-white/10 hover:bg-white/20 border border-white/20 rounded-2xl font-bold text-left text-sm transition hover:scale-[1.02] active:scale-95';
+        btn.innerText = opt;
+        btn.onclick = () => submitAnswer(opt, q.correct);
+        container.appendChild(btn);
+      });
+    }
+
+    function submitAnswer(chosen, correct) {
+      if (answered) return;
+      answered = true;
+
+      const timeTakenMs = Date.now() - qStartTime;
+      let addedPoints = 0;
+
+      if (chosen === correct) {
+        const speedBonus = Math.max(0, 15000 - timeTakenMs);
+        addedPoints = 1000 + Math.floor(speedBonus / 20);
+        myScore += addedPoints;
+
+        db.ref(`room/players/${playerId}`).update({ score: myScore });
+      }
+
+      showScreen('screen-submitted');
+    }
+
+    function renderLeaderboardScreen(playersObj) {
+      showScreen('screen-leaderboard');
+      const container = document.getElementById('player-lb-list');
+      if (!playersObj) return;
+
+      const players = Object.values(playersObj);
+      players.sort((a, b) => (b.score || 0) - (a.score || 0));
+
+      container.innerHTML = players.map((p, idx) => `
+        <div class="flex justify-between items-center bg-white/10 p-3 rounded-xl border border-white/10">
+          <span class="font-bold text-sm ${p.id === playerId ? 'text-pink-400 font-extrabold' : 'text-white'}">
+            #${idx + 1} ${p.name} ${p.id === playerId ? '(Kamu)' : ''}
+          </span>
+          <span class="font-extrabold text-amber-400 text-sm">${p.score || 0} Poin</span>
+        </div>
+      `).join('');
+    }
+
+    function showScreen(screenId) {
+      ['screen-join', 'screen-waiting', 'screen-question', 'screen-submitted', 'screen-leaderboard'].forEach(id => {
+        document.getElementById(id).classList.add('hidden');
+      });
+      document.getElementById(screenId).classList.remove('hidden');
+    }
+  </script>
+</body>
+</html>
